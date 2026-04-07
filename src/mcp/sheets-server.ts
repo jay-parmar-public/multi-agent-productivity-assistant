@@ -3,6 +3,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { mockSheetRows } from "./sheets-data.js";
 
+// In-memory status tracking (mock)
+const rowStatus: Record<string, "pending" | "processed"> = {};
+// Initialize all rows as pending
+for (const row of mockSheetRows) {
+  rowStatus[row.row_id] = "pending";
+}
+
 // Initialize the MCP server
 const server = new McpServer({
   name: "google-sheets-mcp",
@@ -10,31 +17,103 @@ const server = new McpServer({
 });
 
 // ---------------------------------------------------------------------------
-// Tool: read_sheet
+// Tool: read_submissions
+// Fetch rows from the mock Google Sheet, optionally filtered by status
 // ---------------------------------------------------------------------------
 server.tool(
-  "read_sheet",
-  "Fetch rows from a specified Google Sheet containing achievements. Use this to ingest raw, unprocessed achievements.",
-  { spreadsheet_id: z.string().describe("The ID of the Google Sheet to read (use 'demo_sheet_id' for mock)") },
-  async ({ spreadsheet_id }) => {
-    // In a real app, this would use the Google Sheets API.
-    // For the hackathon prototype, we return the mock data if the ID matches.
-    if (spreadsheet_id !== "demo_sheet_id") {
-      return {
-        content: [{ type: "text", text: "Error: Could not find the specified spreadsheet." }],
-        isError: true
-      };
+  "read_submissions",
+  "Fetch achievement submission rows from the Google Sheet. Optionally filter by processing status.",
+  {
+    status: z
+      .enum(["pending", "processed", "all"])
+      .optional()
+      .describe("Filter rows by status. Defaults to all rows if omitted."),
+  },
+  async ({ status }) => {
+    let filtered = mockSheetRows;
+    if (status && status !== "all") {
+      filtered = mockSheetRows.filter(
+        (row) => rowStatus[row.row_id] === status,
+      );
     }
 
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(mockSheetRows, null, 2),
+          text: JSON.stringify(filtered, null, 2),
         },
       ],
     };
-  }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: mark_processed
+// Mark specific rows as processed so they are not re-ingested
+// ---------------------------------------------------------------------------
+server.tool(
+  "mark_processed",
+  "Mark the given row IDs as processed so they are excluded from future pending reads.",
+  {
+    row_ids: z
+      .array(z.string())
+      .describe("Array of row_id values to mark as processed"),
+  },
+  async ({ row_ids }) => {
+    const updated: string[] = [];
+    const notFound: string[] = [];
+
+    for (const id of row_ids) {
+      if (rowStatus[id] !== undefined) {
+        rowStatus[id] = "processed";
+        updated.push(id);
+      } else {
+        notFound.push(id);
+      }
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            updated,
+            ...(notFound.length > 0 ? { not_found: notFound } : {}),
+          }),
+        },
+      ],
+    };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: get_sheet_stats
+// Return summary statistics about the sheet
+// ---------------------------------------------------------------------------
+server.tool(
+  "get_sheet_stats",
+  "Get summary statistics for the achievement submissions sheet: total rows, pending count, and processed count.",
+  {},
+  async () => {
+    const total = mockSheetRows.length;
+    const pending = Object.values(rowStatus).filter(
+      (s) => s === "pending",
+    ).length;
+    const processed = Object.values(rowStatus).filter(
+      (s) => s === "processed",
+    ).length;
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ total, pending, processed }),
+        },
+      ],
+    };
+  },
 );
 
 // ---------------------------------------------------------------------------

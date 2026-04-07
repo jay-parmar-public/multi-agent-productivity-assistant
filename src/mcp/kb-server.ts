@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { companyPriorities, strategicProjects } from "./kb-data.js";
+import { companyPriorities, strategicProjects, teams } from "./kb-data.js";
 
 // Initialize the MCP server
 const server = new McpServer({
@@ -26,7 +26,7 @@ server.tool(
         },
       ],
     };
-  }
+  },
 );
 
 // ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ server.tool(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
-        p.strategic_alignment.toLowerCase().includes(q)
+        p.strategic_alignment.toLowerCase().includes(q),
     );
 
     if (matching.length === 0) {
@@ -54,14 +54,46 @@ server.tool(
     const formatted = matching
       .map(
         (p) =>
-          `Project: ${p.name}\nPriority: ${p.priority}\nBudget: ${p.budget_tier}\nAlignment: ${p.strategic_alignment}\nDesc: ${p.description}`
+          `Project: ${p.name}\nPriority: ${p.priority}\nBudget: ${p.budget_tier}\nAlignment: ${p.strategic_alignment}\nDesc: ${p.description}`,
       )
       .join("\n\n---\n\n");
 
     return {
       content: [{ type: "text", text: formatted }],
     };
-  }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: get_team_info
+// ---------------------------------------------------------------------------
+server.tool(
+  "get_team_info",
+  "Retrieve information about a specific team including size, department, manager, focus areas, and recent wins",
+  { team_name: z.string().describe("The name of the team (e.g. 'Team Alpha')") },
+  async ({ team_name }) => {
+    const q = team_name.toLowerCase();
+    const team = teams.find((t) => t.team_name.toLowerCase() === q);
+
+    if (!team) {
+      return {
+        content: [{ type: "text", text: `No team found matching: ${team_name}` }],
+      };
+    }
+
+    const formatted = [
+      `Team: ${team.team_name}`,
+      `Size: ${team.size} members`,
+      `Department: ${team.department}`,
+      `Manager: ${team.manager}`,
+      `Focus Areas: ${team.focus_areas.join(", ")}`,
+      `Recent Wins: ${team.recent_wins.join("; ")}`,
+    ].join("\n");
+
+    return {
+      content: [{ type: "text", text: formatted }],
+    };
+  },
 );
 
 // ---------------------------------------------------------------------------
