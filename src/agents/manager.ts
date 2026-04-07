@@ -58,12 +58,25 @@ export const getManagerAgent = async () => {
       required: ["rawText", "team"],
     },
     execute: async (args: any) => {
-      const runner = new InMemoryRunner();
-      const response = await runner.runEphemeral({ 
-        agent: curationAgent,
-        input: `Curate this achievement. Team: ${args.team}. Text: ${args.rawText}`
+      const runner = new InMemoryRunner({ agent: curationAgent });
+      const generator = runner.runEphemeral({ 
+        userId: "manager",
+        newMessage: { role: "user", parts: [{ text: `Curate this achievement. Team: ${args.team}. Text: ${args.rawText}` }] }
       });
-      return JSON.stringify(response);
+      let finalResult = null;
+      for await (const event of generator) {
+        if (event.author === "curation-agent" && event.content?.role === "model") {
+          const textPart = event.content.parts?.find((p: any) => p.text);
+          if (textPart) {
+            try {
+              finalResult = JSON.parse(textPart.text);
+            } catch (e) {
+              finalResult = textPart.text;
+            }
+          }
+        }
+      }
+      return JSON.stringify(finalResult);
     },
   });
 
@@ -81,12 +94,25 @@ export const getManagerAgent = async () => {
       required: ["curatedAchievements"],
     },
     execute: async (args: any) => {
-      const runner = new InMemoryRunner();
-      const response = await runner.runEphemeral({ 
-        agent: digestAgent,
-        input: `Generate the digest from these achievements: ${JSON.stringify(args.curatedAchievements)}`
+      const runner = new InMemoryRunner({ agent: digestAgent });
+      const generator = runner.runEphemeral({ 
+        userId: "manager",
+        newMessage: { role: "user", parts: [{ text: `Generate the digest from these achievements: ${JSON.stringify(args.curatedAchievements)}` }] }
       });
-      return JSON.stringify(response);
+      let finalResult = null;
+      for await (const event of generator) {
+        if (event.author === "digest-generator-agent" && event.content?.role === "model") {
+          const textPart = event.content.parts?.find((p: any) => p.text);
+          if (textPart) {
+            try {
+              finalResult = JSON.parse(textPart.text);
+            } catch (e) {
+              finalResult = textPart.text;
+            }
+          }
+        }
+      }
+      return JSON.stringify(finalResult);
     },
   });
 

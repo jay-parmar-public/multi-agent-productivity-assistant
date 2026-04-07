@@ -11,13 +11,17 @@ services:
       - ./src:/app/src
       - ./prisma:/app/prisma
       - ./scripts:/app/scripts
-      # Mount gcloud config from host (if authenticated on host)
+      # Mount gcloud config from host — persists auth across container restarts.
+      # gcloud auth commands inside the container write here, including ADC.
       - ~/.config/gcloud:/root/.config/gcloud
     env_file:
       - .env
     environment:
       - NODE_ENV=development
       - PORT=8080
+      - GOOGLE_GENAI_USE_VERTEXAI=TRUE
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
     # Keep container running for interactive use
     stdin_open: true
     tty: true
+

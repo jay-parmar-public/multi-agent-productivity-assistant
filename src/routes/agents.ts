@@ -19,9 +19,15 @@ app.post("/curate", async (c) => {
     let finalDigest = null;
     for await (const event of generator) {
       events.push(event);
-      // Try to extract the final structured data if it's there
-      if (event.type === "activity" && event.data?.structuredData) {
-        finalDigest = event.data.structuredData;
+      if (event.author === "manager-agent" && event.content?.role === "model") {
+        const textPart = event.content.parts?.find((p: any) => p.text);
+        if (textPart) {
+          try {
+            finalDigest = JSON.parse(textPart.text);
+          } catch (e) {
+            finalDigest = textPart.text;
+          }
+        }
       }
     }
 
@@ -46,8 +52,15 @@ app.post("/digest/generate", async (c) => {
     let finalDigest = null;
     for await (const event of generator) {
       events.push(event);
-      if (event.type === "activity" && event.data?.structuredData) {
-        finalDigest = event.data.structuredData;
+      if (event.author === "manager-agent" && event.content?.role === "model") {
+        const textPart = event.content.parts?.find((p: any) => p.text);
+        if (textPart) {
+          try {
+            finalDigest = JSON.parse(textPart.text);
+          } catch (e) {
+            finalDigest = textPart.text;
+          }
+        }
       }
     }
 

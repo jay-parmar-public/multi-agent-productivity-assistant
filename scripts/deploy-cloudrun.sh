@@ -118,8 +118,6 @@ log_ok "Image pushed: $FULL_IMAGE"
 # ---------------------------------------------------------------------------
 log_info "Step 5/5: Deploying to Cloud Run..."
 
-API_KEY="${GOOGLE_API_KEY:-}"
-
 gcloud run deploy "$SERVICE_NAME" \
     --image="$FULL_IMAGE" \
     --region="$REGION" \
@@ -127,12 +125,12 @@ gcloud run deploy "$SERVICE_NAME" \
     --platform=managed \
     --allow-unauthenticated \
     --vpc-connector="$VPC_CONNECTOR_NAME" \
-    --set-env-vars="DATABASE_URL=${DATABASE_URL},NODE_ENV=production,GEMINI_API_KEY=${API_KEY}" \
-    --memory=1024Mi \
+    --set-env-vars="DATABASE_URL=${DATABASE_URL},NODE_ENV=production,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION}" \
+    --memory=2048Mi \
     --cpu=1 \
     --min-instances=0 \
     --max-instances=3 \
-    --timeout=300 \
+    --timeout=600 \
     --quiet
 
 # Get the service URL
