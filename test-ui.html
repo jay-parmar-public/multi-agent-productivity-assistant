@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Achievement Digest</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --primary: #3b82f6;
+            --primary-hover: #60a5fa;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --success: #10b981;
+            --error: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 3rem 1rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            margin-bottom: 3rem;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 800px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background-color: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            border-color: var(--primary-hover);
+            color: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+
+        button.primary {
+            background: linear-gradient(135deg, var(--primary), #2563eb);
+            color: white;
+            border: none;
+        }
+
+        button.primary:hover {
+            background: linear-gradient(135deg, var(--primary-hover), var(--primary));
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: currentColor;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #output {
+            background: var(--bg-color);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            min-height: 200px;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: #e2e8f0;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        #output.success {
+            border-color: var(--success);
+        }
+
+        #output.error {
+            border-color: var(--error);
+            color: #fca5a5;
+        }
+
+        .placeholder {
+            color: var(--text-muted);
+            text-align: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: inherit;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Agentic Digest Engine</h1>
+    <p class="subtitle">Orchestrating Knowledge Base & Data Ingestion with Google ADK</p>
+
+    <div class="container">
+        <div class="actions">
+            <button id="btnHealth" onclick="testEndpoint('health')">
+                <div class="spinner"></div> Check Health
+            </button>
+            <button id="btnCurate" onclick="testEndpoint('curate')">
+                <div class="spinner"></div> Pipeline: Curate Only
+            </button>
+            <button class="primary" id="btnDigest" onclick="testEndpoint('digest/generate')">
+                <div class="spinner"></div> Full Pipeline: Generate Markdown Digest
+            </button>
+        </div>
+
+        <div id="output">
+            <span class="placeholder">Waiting for execution...</span>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "https://achievement-digest-vk5fgl2t4a-uc.a.run.app";
+
+        async function testEndpoint(path) {
+            const outputDiv = document.getElementById('output');
+            const buttonIds = {
+                'health': 'btnHealth',
+                'curate': 'btnCurate',
+                'digest/generate': 'btnDigest'
+            };
+            
+            const btn = document.getElementById(buttonIds[path]);
+            const spinner = btn.querySelector('.spinner');
+            
+            // UI Loading state
+            outputDiv.innerHTML = "";
+            outputDiv.className = "";
+            outputDiv.style.color = "inherit";
+            document.querySelectorAll('button').forEach(b => b.disabled = true);
+            spinner.style.display = 'block';
+
+            try {
+                // For health it's GET, others are POST
+                const method = path === 'health' ? 'GET' : 'POST';
+                const options = {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' }
+                };
+
+                const start = performance.now();
+                const response = await fetch(`${API_BASE}/${path}`, options);
+                const data = await response.json();
+                const latency = Math.round(performance.now() - start);
+
+                outputDiv.className = response.ok ? 'success' : 'error';
+                
+                // Add timestamp and latency
+                let result = `[${new Date().toLocaleTimeString()}] HTTP ${response.status} (${latency}ms)\n\n`;
+                result += JSON.stringify(data, null, 2);
+                
+                outputDiv.textContent = result;
+            } catch (err) {
+                outputDiv.className = 'error';
+                outputDiv.textContent = `[${new Date().toLocaleTimeString()}] Network Error\n\n${err.message}\nMake sure CORS is working and the API is up.`;
+            } finally {
+                // Restore UI
+                document.querySelectorAll('button').forEach(b => b.disabled = false);
+                spinner.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

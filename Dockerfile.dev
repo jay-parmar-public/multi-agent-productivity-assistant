@@ -1,0 +1,43 @@
+# Development container with Node.js 20 + gcloud CLI + all tools
+FROM node:20-bookworm-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    apt-transport-https \
+    ca-certificates \
+    python3 \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install gcloud CLI
+RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+    > /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files first for better layer caching
+COPY package.json ./
+
+# Install npm dependencies
+RUN npm install
+
+# Install dev tools globally
+RUN npm install -g tsx prisma
+
+# Copy the rest of the source
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate 2>/dev/null || true
+
+# Expose dev server port
+EXPOSE 8080
+
+# Default command: start dev server
+CMD ["npm", "run", "dev"]

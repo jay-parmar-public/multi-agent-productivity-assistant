@@ -1,0 +1,48 @@
+// ---------------------------------------------------------------------------
+// Prisma Schema — Achievement Digest
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Achievement {
+  id          String              @id @default(uuid())
+  text        String              // Raw submission text
+  team        String              // Submitting team name
+  source      String              @default("api") // e.g., "google_sheets", "api"
+  submittedAt DateTime            @default(now()) @map("submitted_at")
+  curated     CuratedAchievement?
+
+  @@map("achievements")
+}
+
+model CuratedAchievement {
+  id            String      @id @default(uuid())
+  achievementId String      @unique @map("achievement_id")
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  category      String      // Innovation | Customer Success | Team Milestone | Process Improvement | Individual Recognition
+  impactScore   Int         @map("impact_score") // 0-100
+  summary       String      // AI-generated concise summary
+  isDuplicate   Boolean     @default(false) @map("is_duplicate")
+  enrichment    Json?       // Project/team context from Knowledge Base MCP
+  curatedAt     DateTime    @default(now()) @map("curated_at")
+
+  @@map("curated_achievements")
+}
+
+model Digest {
+  id          String   @id @default(uuid())
+  weekStart   DateTime @map("week_start")
+  weekEnd     DateTime @map("week_end")
+  contentMd   String   @map("content_md") // Generated markdown digest
+  stats       Json?    // { total_achievements, categories_breakdown, avg_impact_score }
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  @@map("digests")
+}

@@ -1,0 +1,23 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: achievement-digest-dev
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount source code for live reload (but NOT node_modules)
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./scripts:/app/scripts
+      # Mount gcloud config from host (if authenticated on host)
+      - ~/.config/gcloud:/root/.config/gcloud
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+    # Keep container running for interactive use
+    stdin_open: true
+    tty: true

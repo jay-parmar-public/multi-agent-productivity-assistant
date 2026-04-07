@@ -1,0 +1,44 @@
+{
+  "name": "achievement-digest",
+  "version": "1.0.0",
+  "description": "AI-Powered Weekly Achievement Digest — Multi-Agent Productivity Assistant",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "seed": "tsx prisma/seed.ts",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "docker:dev": "docker compose up --build",
+    "docker:shell": "docker compose exec dev bash",
+    "gcp:provision": "bash scripts/provision-gcp.sh",
+    "gcp:teardown": "bash scripts/teardown-gcp.sh"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "keywords": [
+    "multi-agent",
+    "google-adk",
+    "gemini",
+    "mcp",
+    "alloydb"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@google/adk": "^0.6.1",
+    "@hono/node-server": "^1.13.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@prisma/client": "^6.5.0",
+    "hono": "^4.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prisma": "^6.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
