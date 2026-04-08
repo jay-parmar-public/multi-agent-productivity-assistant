@@ -36,10 +36,5 @@ The system leverages a microservices-inspired architecture built using the **Goo
 
 ## 🔗 Useful Links & Documentation
 - [System Architecture & Sequence Diagrams](docs/architecture.md)
-- [Hackathon Project Submission Detail](docs/project-submission.md)
-- [Demo Script](docs/demo-script.md)
-- [Prototype Plan](docs/prototype-plan.md)
-- [Problem Statement Details](docs/hackathon-problem-statement.md)
-
 ---
 *Developed for the Google APAC Hackathon - Cohort 1 by Jay Parmar.*
