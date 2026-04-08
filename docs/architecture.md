@@ -1,163 +1,137 @@
 # System Architecture
 
 ## Component Diagram
-The system follows a microservices-inspired architecture built using the Google Agent Development Kit (ADK) and Model Context Protocol (MCP). The **Manager Agent** acts as the central router, accessing MCP tools via standard local child processes and spawning ephemeral `InMemoryRunner` instances to invoke specific LLM models for curation and synthesis.
+The system follows a microservices-inspired architecture built using the Google Agent Development Kit (ADK) and Model Context Protocol (MCP). The **Manager Agent** acts as the central router for ingestion, accessing MCP tools via standard local child processes and spawning ephemeral `InMemoryRunner` instances to invoke the Curation Agent. To avoid timeouts and optimize database reads, the **Digest Generator Agent** is invoked directly by the API fast-path.
 
 ```mermaid
 graph TD
-    classDef client fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef api fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef adk fill:#cfc,stroke:#333,stroke-width:2px;
-    classDef mcp fill:#fcf,stroke:#333,stroke-width:2px;
-    classDef external fill:#eee,stroke:#333,stroke-width:2px;
-    classDef llm fill:#fdb,stroke:#333,stroke-width:2px;
+    classDef user fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b;
+    classDef backend fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#4a148c;
+    classDef agent fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20;
+    classDef mcp fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100;
+    classDef db fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#b71c1c;
 
-    Client(["Client (Browser UI / curl)"]):::client
+    User(["👤 User / Dashboard"]):::user
 
-    subgraph "Cloud Run Backend (Node.js & Hono)"
-        API(["Hono API Routes (/curate, /digest)"]):::api
+    subgraph "🤖 Multi-Agent Productivity Assistant"
+        API["🔌 API Gateway (Cloud Run)"]:::backend
         
-        subgraph "Google ADK Orchestration"
-            Manager["Manager Agent"]:::adk
-            Curator["Curation Agent"]:::adk
-            DigestGen["Digest Generator Agent"]:::adk
+        subgraph "🧠 AI Agents (Google ADK & Gemini)"
+            Manager["👔 Manager Agent<br/>(Task Delegator)"]:::agent
+            Curator["🕵️ Curation Agent<br/>(Grades & Contextualizes)"]:::agent
+            Digest["📝 Digest Agent<br/>(Writes executive summary)"]:::agent
         end
-        
-        subgraph "MCP Tool Servers (Child Processes)"
-            SheetsMCP["Sheets MCP Server (sheets-server.ts)"]:::mcp
-            KbMCP["Knowledge Base MCP Server (kb-server.ts)"]:::mcp
+
+        subgraph "🛠️ Integrations (MCP Servers)"
+            Sheets["📊 Google Sheets MCP<br/>(Raw updates)"]:::mcp
+            KB["📚 Knowledge Base MCP<br/>(Company OKRs)"]:::mcp
         end
     end
 
-    AlloyDB[("Google AlloyDB (Prisma)")]:::external
-    GeminiLLM{{"Vertex AI (GCP)<br>(gemini-2.5-pro / gemini-2.5-flash)"}}:::llm
+    DB[("🗄️ AlloyDB<br/>(Curated Data & Memory)")]:::db
 
-    %% Flow
-    Client -->|HTTP POST| API
-    API -->|Instantiate & Run| Manager
-    Manager -->|Tool Call: Read Sheets| SheetsMCP
-    Manager -->|Runner: Delegate| Curator
-    Manager -->|Runner: Delegate| DigestGen
+    %% Main connections
+    User -->|Triggers Tasks| API
+    API -->|1. Routes task to| Manager
+    API -->|2. Fast-Path generation| Digest
     
-    Curator -->|Tool Call: Check Priorities| KbMCP
-    API -.->|State Tracking| AlloyDB
-
-    %% LLM Inferences
-    Manager -.->|Vertex AI: gemini-2.5-pro| GeminiLLM
-    Curator -.->|Vertex AI: gemini-2.5-flash| GeminiLLM
-    DigestGen -.->|Vertex AI: gemini-2.5-pro| GeminiLLM
+    Manager -->|Fetches Data| Sheets
+    Manager -->|Delegates to| Curator
+    
+    Curator -->|Checks Priorities| KB
+    Curator -->|Saves Results| DB
+    
+    Digest -->|Reads Curated Data| DB
 ```
 
 ### Component Responsibilities
 
 1. **Client (Browser UI / API Caller)**
-   - Acts as the entry point, firing off REST calls (`POST /digest/generate`).
-   - Receives the final Markdown digest and diagnostic event logs from the server.
+   - Acts as the entry point, firing off REST calls (`POST /curate` and `POST /digest/generate`).
+   - Receives the final diagnostic event logs or the finalized Markdown digest.
 
 2. **Hono API Routes**
-   - Handles the incoming HTTP connection and provisions an `InMemoryRunner` linked to the Manager Agent.
-   - Iterates through the returning `AsyncGenerator` to safely extract streaming ADK events and the finalized data payloads.
-   - Connects to Google AlloyDB via Prisma to read/write persistent platform state (e.g., maintaining digest histories or raw achievement databases if extended).
+   - Handles the incoming HTTP connections.
+   - For curation, it provisions an `InMemoryRunner` linked to the Manager Agent.
+   - For digest generation, it provides a fast-path that reads previously generated data from Google AlloyDB via Prisma and directly calls the Digest Generator to output the final results, mitigating cloud execution timeouts.
 
 3. **Manager Agent (Orchestrator)**
    - The "brain" of the operation driven by Google ADK.
-   - Assesses the API request and autonomously decides to fetch data via MCP servers.
-   - Splits tasks into modular operations, calling sub-agents via dynamic `FunctionTool` implementations to prevent context bloating within a single prompt.
+   - Reaches out to the Sheets MCP to ingest pending records.
+   - Splits tasks into modular operations, calling the Curation Sub-agent via dynamic `FunctionTool` implementations to prevent context bloating within a single prompt and to explicitly track the status per achievement.
 
 4. **MCP Tool Servers**
    - **Sheets MCP**: Exposes endpoints and schemas for reading raw achievement logs (acting as a mock connector to Google Forms/Sheets).
-   - **Knowledge Base MCP**: Acts as an internal Vector/KV database emulator. It provides the Curation Agent with exact "company priorities" criteria natively as requested.
+   - **Knowledge Base MCP**: Acts as an internal Vector/KV database emulator. It provides the Curation Agent with qualitative context over company priorities and project scale.
 
 5. **Sub-Agents (Curation & Digest Generator)**
-   - **Curation Agent**: Receives raw strings, cross-references with the KB MCP, and returns a strictly typed Zod JSON object quantifying impact. Powered centrally by `gemini-2.5-flash` for high-throughput, low-latency categorization logic.
-   - **Digest Generator**: Focuses entirely on presentation and aesthetic language, taking a massive dump of curated JSON items and returning a polished Markdown string ready for distribution. Powered centrally by `gemini-2.5-pro` for advanced systemic reasoning.
+   - **Curation Agent**: Receives raw strings, cross-references with the KB MCP, and writes a strictly typed Zod JSON object quantifying impact straight to AlloyDB. Powered by `gemini-2.5-flash`.
+   - **Digest Generator**: Takes the previously persisted JSON items, generates a summarized digest in pure Markdown format, and uses internal DB tools to persist the final output to AlloyDB. Powered by `gemini-2.5-flash`.
 
 6. **External LLM Model (Vertex AI — Gemini)**
-   - Responsible for all natural language inference, contextual planning, structured JSON schemas, and content parsing. The Google ADK streams function execution requests transparently to Vertex AI using Application Default Credentials (ADC).
+   - All agents unify under `gemini-2.5-flash` for high throughput, optimized categorization logic, and prompt responsiveness using Vertex AI Application Default Credentials (ADC).
 
 <br>
 
 ## Curation Flow Sequence Diagram
-This diagram outlines the `POST /curate` process. It highlights how the Manager Agent extracts mock data and delegates classification to the Curation Sub-agent, measuring priorities against the Knowledge Base MCP while resolving generative responses via the core Gemini models.
+This diagram outlines the `POST /curate` process. It highlights how the Manager Agent extracts mock data and delegates classification to the Curation Sub-agent, measuring priorities against the Knowledge Base MCP and persisting directly to AlloyDB.
 
 ```mermaid
 sequenceDiagram
-    participant U as User (UI)
-    participant API as Hono API
-    participant M as Manager Agent
-    participant LLM as Vertex AI (Gemini)
-    participant SM as Sheets MCP
-    participant C as Curation Agent
-    participant KB as KB MCP
+    participant User as 👤 PM / User
+    participant Manager as 👔 Manager Agent
+    participant MCP as 🛠️ MCP Servers
+    participant Curator as 🕵️ Curation Agent
+    participant DB as 🗄️ AlloyDB
 
-    U->>API: POST /curate
-    activate API
-    API->>M: runEphemeral("Read achievements and strictly curate")
-    activate M
-    M->>LLM: Vertex AI (gemini-2.5-pro): Plan tool execution
-    LLM-->>M: Proceed with read_sheet
-
-    %% Step 1: Read raw data
-    M->>SM: executeTool("read_sheet")
-    activate SM
-    SM-->>M: Return raw achievements (JSON Array)
-    deactivate SM
-
-    %% Step 2: Curate data
-    loop For each raw achievement
-        M->>C: runEphemeral("Curate this achievement...")
-        activate C
-        C->>KB: executeTool("get_company_priorities", team)
-        activate KB
-        KB-->>C: Return strategic priorities mapping
-        deactivate KB
+    User->>Manager: "Curate this week's updates"
+    activate Manager
+    Manager->>MCP: Fetch raw data (Sheets MCP)
+    MCP-->>Manager: Raw team updates
+    
+    loop For each raw update
+        Manager->>Curator: "Evaluate this update"
+        activate Curator
         
-        C->>LLM: Vertex AI (gemini-2.5-flash): Analyze mapping & JSON extraction
-        LLM-->>C: Zod Structured Output
+        Curator->>MCP: What are company OKRs? (KB MCP)
+        MCP-->>Curator: e.g., "Q1 Focus: AI Integration"
         
-        C-->>M: yield Structured Curated Output (Category, Score)
-        deactivate C
+        Curator-->>Curator: Grade update against OKRs using Gemini
+        
+        Curator->>DB: Save scored & enriched update
+        DB-->>Curator: Success
+        
+        Curator-->>Manager: Curation completed for update
+        deactivate Curator
     end
-
-    M-->>API: AsyncGenerator Events (Structured Payload)
-    deactivate M
-    API-->>U: Return Curated JSON
-    deactivate API
+    
+    Manager-->>User: Done! All achievements categorized and scored.
+    deactivate Manager
 ```
 
 <br>
 
 ## Digest Generation Sequence Diagram
-This diagram showcases the `POST /digest/generate` flow. The Manager Agent takes previously aggregated or newly minted curated datasets and delegates them to the formatting-focused Digest Sub-agent.
+This diagram showcases the `POST /digest/generate` flow. The API directly triggers the Digest Sub-agent using a fast-path, which reads all curated achievements up to this moment and constructs the executive summary.
 
 ```mermaid
 sequenceDiagram
-    participant U as User (UI)
-    participant API as Hono API
-    participant M as Manager Agent
-    participant LLM as Google Gemini API
-    participant D as Digest Agent
+    participant User as 👤 PM / User
+    participant DB as 🗄️ Database
+    participant Digest as 📝 Digest Agent
+    participant LLM as 🧠 Gemini 2.5 Flash
 
-    U->>API: POST /digest/generate
-    activate API
-    API->>M: runEphemeral("Summarize the Curated Output Database")
-    activate M
-    M->>LLM: Vertex AI (gemini-2.5-pro): Plan workflow
-    LLM-->>M: Proceed to delegate to Digest Generator
-
-    %% Step 1: Push context
-    Note over M,D: Manager loads generated curated JSON objects
-
-    %% Step 2: Digest formatting
-    M->>D: runEphemeral("Generate markdown digest from [Curated Array]")
-    activate D
-    D->>LLM: Vertex AI (gemini-2.5-pro): Format and stylize inputs
-    LLM-->>D: Markdown synthesis resolution
-    D-->>M: yield Structured Object containing formatted Markdown
-    deactivate D
-
-    M-->>API: AsyncGenerator Events (Final Digest Payload)
-    deactivate M
-    API-->>U: Return Output JSON (Markdown Text)
-    deactivate API
+    User->>Digest: "Generate Weekly Digest"
+    activate Digest
+    
+    Digest->>DB: Fetch highly scored curated updates for the week
+    DB-->>Digest: Curated achievements array
+    
+    Digest->>LLM: Synthesize into an Executive Summary
+    LLM-->>Digest: Formatted Markdown text
+    
+    Digest->>DB: Save final digest copy (Archived)
+    
+    Digest-->>User: Return Beautiful Executive Dashboard/Markdown
+    deactivate Digest
 ```
